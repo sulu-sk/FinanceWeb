@@ -266,9 +266,12 @@
             if (window.Telegram && window.Telegram.WebApp) {
                 const tg = window.Telegram.WebApp;
                 tg.ready();
-                tg.expand(); // Full screen
+                try {
+                    tg.expand(); // Full screen
+                } catch(e) {}
 
-                if (tg.CloudStorage) {
+                // Check if CloudStorage is supported (v6.9+)
+                if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage) {
                     tg.CloudStorage.getItems(['fin_income', 'fin_expenses'], (err, values) => {
                         if (err) {
                             console.error('Telegram Cloud Error:', err);
@@ -296,6 +299,8 @@
                             updateGlobalUI();
                         }
                     });
+                } else {
+                    console.log('Telegram CloudStorage not supported in this version');
                 }
             }
         }
@@ -308,10 +313,13 @@
             localStorage.setItem('fin_income', incomeStr);
             localStorage.setItem('fin_expenses', expenseStr);
 
-            // 2. Save to Telegram Cloud
-            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage) {
-                window.Telegram.WebApp.CloudStorage.setItem('fin_income', incomeStr);
-                window.Telegram.WebApp.CloudStorage.setItem('fin_expenses', expenseStr);
+            // 2. Save to Telegram Cloud (if supported)
+            if (window.Telegram && window.Telegram.WebApp) {
+                const tg = window.Telegram.WebApp;
+                if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage) {
+                    tg.CloudStorage.setItem('fin_income', incomeStr);
+                    tg.CloudStorage.setItem('fin_expenses', expenseStr);
+                }
             }
         }
 
@@ -322,9 +330,12 @@
                 localStorage.removeItem('fin_expenses');
                 
                 // Clear Cloud
-                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage) {
-                    window.Telegram.WebApp.CloudStorage.removeItem('fin_income');
-                    window.Telegram.WebApp.CloudStorage.removeItem('fin_expenses');
+                if (window.Telegram && window.Telegram.WebApp) {
+                    const tg = window.Telegram.WebApp;
+                    if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage) {
+                        tg.CloudStorage.removeItem('fin_income');
+                        tg.CloudStorage.removeItem('fin_expenses');
+                    }
                 }
 
                 loadFromLocal();
