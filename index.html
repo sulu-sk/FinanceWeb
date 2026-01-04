@@ -49,19 +49,37 @@
 
     <!-- HEADER (Sticky) -->
     <header class="bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 shadow-sm safe-area-top transition-all duration-300">
-        <div class="max-w-md mx-auto px-4 py-3 flex justify-between items-center">
-            <div class="flex items-center gap-2.5">
-                <div class="bg-blue-600 p-1.5 rounded-lg shadow-sm shadow-blue-200">
-                    <i data-lucide="wallet" class="w-5 h-5 text-white"></i>
+        <div class="max-w-md mx-auto px-4 py-3">
+            <!-- Top Row: App Title & Balance -->
+            <div class="flex justify-between items-center mb-3">
+                <div class="flex items-center gap-2">
+                    <div class="bg-blue-600 p-1.5 rounded-lg shadow-sm shadow-blue-200">
+                        <i data-lucide="wallet" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-base font-bold text-slate-800 leading-tight">Мои Финансы</h1>
+                    </div>
                 </div>
-                <div>
-                    <h1 class="text-base font-bold text-slate-800 leading-tight">Мои Финансы</h1>
-                    <p class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Учет расходов</p>
+                <div class="text-right">
+                    <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Баланс</p>
+                    <p id="header-balance" class="font-bold text-lg text-emerald-600 leading-none">0 ₸</p>
                 </div>
             </div>
-            <div class="text-right">
-                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Баланс</p>
-                <p id="header-balance" class="font-bold text-lg text-emerald-600 leading-none">0 ₸</p>
+
+            <!-- Bottom Row: Month Navigation Control -->
+            <div class="bg-slate-100 p-1 rounded-xl flex items-center justify-between">
+                <button onclick="changeMonth(-1)" class="w-10 h-8 flex items-center justify-center bg-white rounded-lg text-slate-500 shadow-sm active:scale-95 transition-all border border-slate-200 hover:text-blue-600">
+                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                </button>
+                
+                <div class="flex items-center gap-2">
+                    <i data-lucide="calendar" class="w-4 h-4 text-slate-400"></i>
+                    <span id="current-month-display" class="text-sm font-bold text-slate-700 capitalize">...</span>
+                </div>
+
+                <button onclick="changeMonth(1)" class="w-10 h-8 flex items-center justify-center bg-white rounded-lg text-slate-500 shadow-sm active:scale-95 transition-all border border-slate-200 hover:text-blue-600">
+                    <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                </button>
             </div>
         </div>
     </header>
@@ -121,7 +139,7 @@
             <!-- Reset Data Button -->
             <div class="text-center">
                 <button onclick="resetData()" class="text-xs text-slate-400 underline hover:text-red-500 transition-colors">
-                    Сбросить все данные и начать заново
+                    Очистить данные за этот месяц
                 </button>
             </div>
         </div>
@@ -131,7 +149,7 @@
             <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 mb-4 flex items-start gap-3">
                 <i data-lucide="info" class="w-5 h-5 text-emerald-500 mt-0.5 shrink-0"></i>
                 <p class="text-xs text-emerald-800 leading-relaxed">
-                    Введите ваши источники дохода. Данные автоматически сохраняются в облаке Telegram.
+                    Данные автоматически сохраняются для выбранного месяца.
                 </p>
             </div>
 
@@ -151,7 +169,7 @@
                 <i data-lucide="info" class="w-5 h-5 text-blue-500 mt-0.5 shrink-0"></i>
                 <p class="text-xs text-blue-800 leading-relaxed">
                     Заполните <strong>План</strong> на месяц. 
-                    Нажимайте <strong>+</strong>, чтобы добавить сумму новой покупки к уже потраченному.
+                    Нажимайте <strong>+</strong>, чтобы добавить сумму новой покупки.
                 </p>
             </div>
 
@@ -212,7 +230,7 @@
     </nav>
 
     <script>
-        // --- DEFAULT DATA TEMPLATES ---
+        // --- DATA & STATE ---
         const DEFAULT_INCOME = [
             { id: 1, source: 'Зарплата', cash: 0, card: 0 },
             { id: 2, source: 'Подработка', cash: 0, card: 0 },
@@ -234,6 +252,9 @@
         let expenseData = [];
         let activeTab = 'summary';
         let currentEditingExpenseId = null;
+        
+        // Date State
+        let currentDate = new Date();
 
         // --- UTILS ---
         const formatMoney = (amount) => {
@@ -242,112 +263,148 @@
 
         const generateId = (arr) => arr.length > 0 ? Math.max(...arr.map(i => i.id)) + 1 : 1;
 
-        // --- STORAGE ---
-        function loadFromLocal() {
-            // 1. Try LocalStorage (Sync/Fast)
-            const savedIncome = localStorage.getItem('fin_income');
-            const savedExpenses = localStorage.getItem('fin_expenses');
+        // Get unique key for storage based on Year and Month (e.g., "2024-0")
+        const getMonthKey = (date) => `${date.getFullYear()}-${date.getMonth()}`;
 
-            if (savedIncome) {
-                incomeData = JSON.parse(savedIncome);
-            } else {
-                incomeData = JSON.parse(JSON.stringify(DEFAULT_INCOME));
-            }
-
-            if (savedExpenses) {
-                expenseData = JSON.parse(savedExpenses);
-            } else {
-                expenseData = JSON.parse(JSON.stringify(DEFAULT_EXPENSES));
-            }
+        // --- DATE MANAGEMENT ---
+        function renderHeaderMonth() {
+            const months = [
+                "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", 
+                "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+            ];
+            const monthName = months[currentDate.getMonth()];
+            const year = currentDate.getFullYear();
+            document.getElementById('current-month-display').textContent = `${monthName} ${year}`;
         }
 
-        function initTelegram() {
-            // 2. Try Telegram Cloud (Async/Reliable)
-            if (window.Telegram && window.Telegram.WebApp) {
+        function changeMonth(offset) {
+            // Save current data before switching
+            saveData();
+
+            // Store current structure to use as template if next month is empty
+            const templateIncome = JSON.parse(JSON.stringify(incomeData));
+            const templateExpenses = JSON.parse(JSON.stringify(expenseData));
+
+            // Change date
+            currentDate.setMonth(currentDate.getMonth() + offset);
+            renderHeaderMonth();
+
+            // Load data for new month
+            loadData(templateIncome, templateExpenses);
+        }
+
+        // --- STORAGE (Multi-month logic) ---
+        function loadData(prevIncomeTemplate = null, prevExpensesTemplate = null) {
+            const keySuffix = getMonthKey(currentDate);
+            const incomeKey = `fin_income_${keySuffix}`;
+            const expensesKey = `fin_expenses_${keySuffix}`;
+
+            // Helper to handle loading logic
+            const processData = (incomeVal, expensesVal) => {
+                let isNewMonth = false;
+
+                if (incomeVal) {
+                    incomeData = JSON.parse(incomeVal);
+                } else {
+                    // New month: Copy structure from previous but zero out actuals
+                    isNewMonth = true;
+                    if (prevIncomeTemplate && prevIncomeTemplate.length > 0) {
+                        incomeData = prevIncomeTemplate.map(item => ({ ...item, cash: 0, card: 0 }));
+                    } else {
+                        incomeData = JSON.parse(JSON.stringify(DEFAULT_INCOME));
+                    }
+                }
+
+                if (expensesVal) {
+                    expenseData = JSON.parse(expensesVal);
+                } else {
+                    // New month: Copy Plan but zero out Spent
+                    if (prevExpensesTemplate && prevExpensesTemplate.length > 0) {
+                        expenseData = prevExpensesTemplate.map(item => ({ ...item, spent: 0 }));
+                    } else {
+                        expenseData = JSON.parse(JSON.stringify(DEFAULT_EXPENSES));
+                    }
+                }
+
+                renderSummaryView();
+                renderIncomeList();
+                renderExpenseList();
+                updateGlobalUI();
+            };
+
+            // 1. Try LocalStorage first (Fast)
+            const localIncome = localStorage.getItem(incomeKey);
+            const localExpenses = localStorage.getItem(expensesKey);
+            processData(localIncome, localExpenses);
+
+            // 2. Try CloudStorage (Async sync)
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage) {
                 const tg = window.Telegram.WebApp;
-                tg.ready();
-                try {
-                    tg.expand(); // Full screen
-                } catch(e) {}
-
-                // Check if CloudStorage is supported (v6.9+)
-                if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage) {
-                    tg.CloudStorage.getItems(['fin_income', 'fin_expenses'], (err, values) => {
-                        if (err) {
-                            console.error('Telegram Cloud Error:', err);
-                            return;
-                        }
-
-                        let hasUpdates = false;
-                        // If Cloud has data, it overwrites LocalStorage (as it persists better)
-                        if (values && values.fin_income) {
-                            incomeData = JSON.parse(values.fin_income);
-                            localStorage.setItem('fin_income', values.fin_income); // Sync back to local
-                            hasUpdates = true;
-                        }
-                        if (values && values.fin_expenses) {
-                            expenseData = JSON.parse(values.fin_expenses);
-                            localStorage.setItem('fin_expenses', values.fin_expenses); // Sync back to local
-                            hasUpdates = true;
-                        }
-
-                        if (hasUpdates) {
-                            // Re-render if we found new data in cloud
-                            if (activeTab === 'summary') renderSummaryView();
-                            if (activeTab === 'income') renderIncomeList();
-                            if (activeTab === 'expenses') renderExpenseList();
-                            updateGlobalUI();
+                // Check support
+                if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
+                     tg.CloudStorage.getItems([incomeKey, expensesKey], (err, values) => {
+                        if (!err && values) {
+                            // Only update if cloud has data
+                            if (values[incomeKey] || values[expensesKey]) {
+                                processData(values[incomeKey], values[expensesKey]);
+                                // Sync back to local to keep them aligned
+                                if (values[incomeKey]) localStorage.setItem(incomeKey, values[incomeKey]);
+                                if (values[expensesKey]) localStorage.setItem(expensesKey, values[expensesKey]);
+                            }
                         }
                     });
-                } else {
-                    console.log('Telegram CloudStorage not supported in this version');
                 }
             }
         }
 
         function saveData() {
+            const keySuffix = getMonthKey(currentDate);
+            const incomeKey = `fin_income_${keySuffix}`;
+            const expensesKey = `fin_expenses_${keySuffix}`;
+
             const incomeStr = JSON.stringify(incomeData);
             const expenseStr = JSON.stringify(expenseData);
 
-            // 1. Save to LocalStorage
-            localStorage.setItem('fin_income', incomeStr);
-            localStorage.setItem('fin_expenses', expenseStr);
+            // 1. Save Local
+            localStorage.setItem(incomeKey, incomeStr);
+            localStorage.setItem(expensesKey, expenseStr);
 
-            // 2. Save to Telegram Cloud (if supported)
-            if (window.Telegram && window.Telegram.WebApp) {
-                const tg = window.Telegram.WebApp;
-                if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage) {
-                    tg.CloudStorage.setItem('fin_income', incomeStr);
-                    tg.CloudStorage.setItem('fin_expenses', expenseStr);
-                }
+            // 2. Save Cloud
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage) {
+                 const tg = window.Telegram.WebApp;
+                 if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
+                    tg.CloudStorage.setItem(incomeKey, incomeStr);
+                    tg.CloudStorage.setItem(expensesKey, expenseStr);
+                 }
             }
         }
 
         function resetData() {
-            if(confirm('Вы уверены? Это удалит все ваши текущие записи и вернет пустую таблицу.')) {
+            if(confirm('Очистить все данные за ТЕКУЩИЙ месяц? Это действие нельзя отменить.')) {
+                const keySuffix = getMonthKey(currentDate);
+                const incomeKey = `fin_income_${keySuffix}`;
+                const expensesKey = `fin_expenses_${keySuffix}`;
+
                 // Clear Local
-                localStorage.removeItem('fin_income');
-                localStorage.removeItem('fin_expenses');
+                localStorage.removeItem(incomeKey);
+                localStorage.removeItem(expensesKey);
                 
                 // Clear Cloud
-                if (window.Telegram && window.Telegram.WebApp) {
-                    const tg = window.Telegram.WebApp;
-                    if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage) {
-                        tg.CloudStorage.removeItem('fin_income');
-                        tg.CloudStorage.removeItem('fin_expenses');
-                    }
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage) {
+                     const tg = window.Telegram.WebApp;
+                     if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
+                        tg.CloudStorage.removeItem(incomeKey);
+                        tg.CloudStorage.removeItem(expensesKey);
+                     }
                 }
 
-                loadFromLocal();
-                renderSummaryView();
-                renderIncomeList();
-                renderExpenseList();
-                updateGlobalUI();
-                alert('Данные сброшены!');
+                // Reload (will trigger defaults)
+                loadData(); 
+                alert('Данные за этот месяц сброшены.');
             }
         }
 
-        // --- CORE FUNCTIONS ---
+        // --- CORE FUNCTIONS (Unchanged logic, just using current data) ---
 
         function calculateTotals() {
             const totalIncome = incomeData.reduce((acc, item) => acc + Number(item.cash) + Number(item.card), 0);
@@ -360,19 +417,16 @@
         function updateGlobalUI() {
             const { totalIncome, totalBudget, totalSpent, balance } = calculateTotals();
             
-            // Header Balance
             const headerBal = document.getElementById('header-balance');
             if(headerBal) {
                 headerBal.textContent = formatMoney(balance);
                 headerBal.className = `font-bold text-lg leading-none ${balance >= 0 ? 'text-emerald-600' : 'text-red-500'}`;
             }
 
-            // Income Tab Total
             if (document.getElementById('total-income-display')) {
                 document.getElementById('total-income-display').textContent = formatMoney(totalIncome);
             }
 
-            // Summary View Updates (if active)
             if (activeTab === 'summary') {
                 renderSummaryView();
             }
@@ -382,18 +436,12 @@
 
         function switchTab(tabName) {
             activeTab = tabName;
-            
-            // 1. Toggle Views
             ['summary', 'income', 'expenses'].forEach(t => {
                 const view = document.getElementById(`view-${t}`);
-                if (t === tabName) {
-                    view.classList.remove('hidden');
-                } else {
-                    view.classList.add('hidden');
-                }
+                if (t === tabName) view.classList.remove('hidden');
+                else view.classList.add('hidden');
             });
 
-            // 2. Toggle Nav Styles
             ['summary', 'income', 'expenses'].forEach(t => {
                 const navBtn = document.getElementById(`nav-${t}`);
                 if (t === tabName) {
@@ -405,19 +453,14 @@
                 }
             });
 
-            // 3. Toggle FAB
             const fab = document.getElementById('fab-add');
-            if (tabName === 'summary') {
-                fab.classList.add('hidden');
-            } else {
-                fab.classList.remove('hidden');
-            }
+            if (tabName === 'summary') fab.classList.add('hidden');
+            else fab.classList.remove('hidden');
 
             if (tabName === 'summary') renderSummaryView();
             if (tabName === 'income') renderIncomeList();
             if (tabName === 'expenses') renderExpenseList();
             
-            // Scroll to top
             window.scrollTo(0,0);
             lucide.createIcons();
         }
@@ -430,16 +473,13 @@
         function renderSummaryView() {
             const { totalIncome, totalBudget, totalSpent, balance } = calculateTotals();
             
-            // Hero Card
             document.getElementById('hero-balance').textContent = formatMoney(balance);
             document.getElementById('hero-income').textContent = formatMoney(totalIncome);
             document.getElementById('hero-spent').textContent = formatMoney(totalSpent);
 
-            // Grid Stats
             document.getElementById('summary-budget').textContent = formatMoney(totalBudget);
             document.getElementById('summary-remaining').textContent = formatMoney(totalBudget - totalSpent);
 
-            // Budget Progress
             const percentage = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
             const isOver = totalSpent > totalBudget;
             
@@ -601,16 +641,12 @@
         function openAddExpenseModal(id) {
             currentEditingExpenseId = id;
             const item = expenseData.find(e => e.id === id);
-            
-            // Set modal content
             document.getElementById('modal-category-name').textContent = `Добавить к: ${item.category}`;
             document.getElementById('modal-amount-input').value = '';
             
-            // Show modal
             const modal = document.getElementById('add-expense-modal');
             modal.classList.remove('hidden');
             
-            // Focus input slightly delayed for mobile keyboard
             setTimeout(() => {
                 document.getElementById('modal-amount-input').focus();
             }, 100);
@@ -633,11 +669,7 @@
                 if (idx !== -1) {
                     const currentSpent = Number(expenseData[idx].spent);
                     const newTotal = currentSpent + addAmount;
-                    
-                    // Update data
                     updateExpenseData(currentEditingExpenseId, 'spent', newTotal);
-                    
-                    // Update input field in UI manually to reflect new sum immediately without re-render lag
                     const uiInput = document.getElementById(`input-spent-${currentEditingExpenseId}`);
                     if(uiInput) uiInput.value = newTotal;
                 }
@@ -651,7 +683,7 @@
             const idx = incomeData.findIndex(i => i.id === id);
             if (idx !== -1) {
                 incomeData[idx][field] = field === 'source' ? value : Number(value);
-                saveData(); // Save on change
+                saveData(); 
                 
                 const item = incomeData[idx];
                 const total = Number(item.cash) + Number(item.card);
@@ -665,7 +697,7 @@
             const idx = expenseData.findIndex(e => e.id === id);
             if (idx !== -1) {
                 expenseData[idx][field] = field === 'category' ? value : Number(value);
-                saveData(); // Save on change
+                saveData();
 
                 const item = expenseData[idx];
                 const budget = Number(item.planCash) + Number(item.planCard);
@@ -674,7 +706,6 @@
                 const isOverBudget = remaining < 0;
                 const percent = budget > 0 ? (spent / budget) * 100 : 0;
 
-                // Live Updates
                 const budgetEl = document.getElementById(`exp-total-${id}`);
                 if (budgetEl) budgetEl.textContent = formatMoney(budget);
 
@@ -711,7 +742,7 @@
 
         function addExpenseItem() {
             const newId = generateId(expenseData);
-            expenseData.unshift({ id: newId, category: '', planCash: 0, planCard: 0, spent: 0 }); // Add to top
+            expenseData.unshift({ id: newId, category: '', planCash: 0, planCard: 0, spent: 0 });
             saveData();
             renderExpenseList();
             updateGlobalUI();
@@ -726,13 +757,24 @@
 
         // --- INIT ---
         window.onload = function() {
-            loadFromLocal(); // 1. Fast load from local
-            updateGlobalUI();
-            switchTab('summary');
+            renderHeaderMonth();
+            loadData(); // Load current month data
+            initTelegram(); // Init telegram features
             
-            // 2. Async load from Cloud (Telegram)
-            initTelegram();
+            // Expand telegram view if possible
+            if (window.Telegram && window.Telegram.WebApp) {
+                try { window.Telegram.WebApp.expand(); } catch(e){}
+            }
+            
+            switchTab('summary');
         };
+
+        function initTelegram() {
+             if (window.Telegram && window.Telegram.WebApp) {
+                const tg = window.Telegram.WebApp;
+                tg.ready();
+             }
+        }
 
     </script>
 </body>
