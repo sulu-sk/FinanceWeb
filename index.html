@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Подключаем иконки Lucide -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Подключаем Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         /* Плавность анимаций */
         .fade-in {
@@ -129,7 +131,7 @@
             <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 mb-4 flex items-start gap-3">
                 <i data-lucide="info" class="w-5 h-5 text-emerald-500 mt-0.5 shrink-0"></i>
                 <p class="text-xs text-emerald-800 leading-relaxed">
-                    Введите ваши источники дохода. Данные сохраняются автоматически.
+                    Введите ваши источники дохода. Данные автоматически сохраняются в облаке Telegram.
                 </p>
             </div>
 
@@ -241,7 +243,8 @@
         const generateId = (arr) => arr.length > 0 ? Math.max(...arr.map(i => i.id)) + 1 : 1;
 
         // --- STORAGE ---
-        function loadData() {
+        function loadFromLocal() {
+            // 1. Try LocalStorage (Sync/Fast)
             const savedIncome = localStorage.getItem('fin_income');
             const savedExpenses = localStorage.getItem('fin_expenses');
 
@@ -258,16 +261,73 @@
             }
         }
 
+        function initTelegram() {
+            // 2. Try Telegram Cloud (Async/Reliable)
+            if (window.Telegram && window.Telegram.WebApp) {
+                const tg = window.Telegram.WebApp;
+                tg.ready();
+                tg.expand(); // Full screen
+
+                if (tg.CloudStorage) {
+                    tg.CloudStorage.getItems(['fin_income', 'fin_expenses'], (err, values) => {
+                        if (err) {
+                            console.error('Telegram Cloud Error:', err);
+                            return;
+                        }
+
+                        let hasUpdates = false;
+                        // If Cloud has data, it overwrites LocalStorage (as it persists better)
+                        if (values && values.fin_income) {
+                            incomeData = JSON.parse(values.fin_income);
+                            localStorage.setItem('fin_income', values.fin_income); // Sync back to local
+                            hasUpdates = true;
+                        }
+                        if (values && values.fin_expenses) {
+                            expenseData = JSON.parse(values.fin_expenses);
+                            localStorage.setItem('fin_expenses', values.fin_expenses); // Sync back to local
+                            hasUpdates = true;
+                        }
+
+                        if (hasUpdates) {
+                            // Re-render if we found new data in cloud
+                            if (activeTab === 'summary') renderSummaryView();
+                            if (activeTab === 'income') renderIncomeList();
+                            if (activeTab === 'expenses') renderExpenseList();
+                            updateGlobalUI();
+                        }
+                    });
+                }
+            }
+        }
+
         function saveData() {
-            localStorage.setItem('fin_income', JSON.stringify(incomeData));
-            localStorage.setItem('fin_expenses', JSON.stringify(expenseData));
+            const incomeStr = JSON.stringify(incomeData);
+            const expenseStr = JSON.stringify(expenseData);
+
+            // 1. Save to LocalStorage
+            localStorage.setItem('fin_income', incomeStr);
+            localStorage.setItem('fin_expenses', expenseStr);
+
+            // 2. Save to Telegram Cloud
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage) {
+                window.Telegram.WebApp.CloudStorage.setItem('fin_income', incomeStr);
+                window.Telegram.WebApp.CloudStorage.setItem('fin_expenses', expenseStr);
+            }
         }
 
         function resetData() {
             if(confirm('Вы уверены? Это удалит все ваши текущие записи и вернет пустую таблицу.')) {
+                // Clear Local
                 localStorage.removeItem('fin_income');
                 localStorage.removeItem('fin_expenses');
-                loadData();
+                
+                // Clear Cloud
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.CloudStorage) {
+                    window.Telegram.WebApp.CloudStorage.removeItem('fin_income');
+                    window.Telegram.WebApp.CloudStorage.removeItem('fin_expenses');
+                }
+
+                loadFromLocal();
                 renderSummaryView();
                 renderIncomeList();
                 renderExpenseList();
@@ -655,9 +715,12 @@
 
         // --- INIT ---
         window.onload = function() {
-            loadData(); // Load saved data or defaults
+            loadFromLocal(); // 1. Fast load from local
             updateGlobalUI();
             switchTab('summary');
+            
+            // 2. Async load from Cloud (Telegram)
+            initTelegram();
         };
 
     </script>
